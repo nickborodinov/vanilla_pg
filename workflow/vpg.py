@@ -67,7 +67,7 @@ class pg:
         self.sess.run(init)
         
     
-    def run_session_once(self):
+    def run_train_session_once(self,verbose=False,plotit=False):
         self.states = np.zeros((self.maxsteps,self.dim), dtype='float32')
         self.actions = np.zeros((self.maxsteps,self.dim_actions), dtype='float32')
         self.rewards = np.zeros((self.maxsteps,1), dtype='float32')
@@ -95,6 +95,11 @@ class pg:
             action=[x1,x2,x3]
             
             self.new_observation, self.reward, done = self.env.step(action)
+            dstate=self.observation.reshape(32,32)
+            if plotit:
+                plt.imshow(dstate,vmin=0,vmax=30,cmap='nipy_spectral')
+                plt.colorbar()
+                plt.show()
             self.new_observation=self.new_observation-self.new_observation.mean()
             self.states[self.timestep, :] = self.observation
         
@@ -102,8 +107,9 @@ class pg:
             self.rewards[self.timestep, :] = self.reward
             self.timestep += 1
             self.new_observation = np.reshape(self.new_observation,(1,self.dim))
-            self.observation[:] = self.new_observation
-            print('Timestep: {}, reward: {:.4}, RMS: {:.3}, action: {}'.format(self.timestep,self.reward,calc_roughness(self.observation),action))
+            self.observation = self.new_observation
+            if verbose:
+                print('Timestep: {}, reward: {:.4}, RMS: {:.3}, action: {}'.format(self.timestep,self.reward,calc_roughness(self.observation),action))
 
         self.states = self.states[:self.timestep, :]
         self.actions = self.actions[:self.timestep, :]
@@ -114,23 +120,21 @@ class pg:
 
         for i in range(self.num_gradients):
             self.sess.run(self.train_step, feed_dict={self.state_vpg: self.states, self.action_choice: self.actions, self.reward_signal: self.rewards, self.n_timesteps: self.timestep})
-
-
-
             for n,var in enumerate([self.W1,self.b1,self.a1,self.W0,self.b0,self.a0]):
                 var_grad = tf.gradients(self.loss, [var])[0]
                 self.var_grad_val = self.sess.run(var_grad, feed_dict={self.state_vpg: self.states, self.action_choice: self.actions, self.reward_signal: self.rewards, self.n_timesteps: self.timestep})       
                 self.gradients[["W1","b1","a1","W0","b0","a0"][n]]+=[self.var_grad_val]
-            print('VPG is running!')            
+            if verbose:
+                 print('VPG is running!')            
        
 
-    def run_session(self):
+    def run_train_session(self,verbose=False,plotit=False):
         for run in range(self.episodes):
-            self.run_session_once()
+            self.run_train_session_once(verbose=verbose,plotit=plotit)
             self.learning[run] = self.timestep
 
     def save_session(self,name='sess'):
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(save_relative_paths=True)
         saver.save(self.sess, name)
 
     def load_session(self,name='sess'):
